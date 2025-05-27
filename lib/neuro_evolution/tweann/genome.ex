@@ -4,7 +4,7 @@ defmodule NeuroEvolution.TWEANN.Genome do
   Includes innovation numbers for crossover alignment and substrate encodings.
   """
 
-  alias NeuroEvolution.TWEANN.{Node, Connection}
+  alias NeuroEvolution.TWEANN.{Node, Connection, InnovationTracker}
   
   defstruct [
     :id,
@@ -32,7 +32,21 @@ defmodule NeuroEvolution.TWEANN.Genome do
     plasticity_config: map() | nil
   }
 
-  def new(input_count, output_count, opts \\ []) do
+  @spec new(non_neg_integer(), non_neg_integer(), keyword()) :: t()
+  def new(input_count, output_count, opts \\ []) when input_count > 0 and output_count > 0 do
+    # Validate input parameters
+    unless is_integer(input_count) and input_count > 0 do
+      raise ArgumentError, "input_count must be a positive integer, got: #{inspect(input_count)}"
+    end
+    
+    unless is_integer(output_count) and output_count > 0 do
+      raise ArgumentError, "output_count must be a positive integer, got: #{inspect(output_count)}"
+    end
+    
+    unless is_list(opts) do
+      raise ArgumentError, "opts must be a keyword list, got: #{inspect(opts)}"
+    end
+    
     substrate_config = Keyword.get(opts, :substrate)
     plasticity_config = Keyword.get(opts, :plasticity)
     
@@ -52,34 +66,47 @@ defmodule NeuroEvolution.TWEANN.Genome do
     }
   end
 
+  @spec add_node(t(), integer()) :: t()
   def add_node(%__MODULE__{} = genome, connection_innovation) do
-    connection = genome.connections[connection_innovation]
-    return_if_nil(connection, genome)
+    case Map.get(genome.connections, connection_innovation) do
+      nil -> 
+        genome
+      connection ->
+        new_node_id = get_next_node_id(genome)
+        innovation1 = InnovationTracker.get_node_innovation(connection.from, new_node_id)
+        innovation2 = InnovationTracker.get_node_innovation(new_node_id, connection.to)
 
-    new_node_id = get_next_node_id(genome)
-    innovation1 = get_innovation_number()
-    innovation2 = get_innovation_number()
+        new_node = Node.new(new_node_id, :hidden, get_activation_function(genome))
+        
+        conn1 = Connection.new(connection.from, new_node_id, 1.0, innovation1, true)
+        conn2 = Connection.new(new_node_id, connection.to, connection.weight, innovation2, true)
 
-    new_node = Node.new(new_node_id, :hidden, get_activation_function(genome))
-    
-    conn1 = Connection.new(connection.from, new_node_id, 1.0, innovation1, true)
-    conn2 = Connection.new(new_node_id, connection.to, connection.weight, innovation2, true)
+        updated_connections = 
+          genome.connections
+          |> Map.put(connection_innovation, %{connection | enabled: false})
+          |> Map.put(innovation1, conn1)
+          |> Map.put(innovation2, conn2)
 
-    updated_connections = 
-      genome.connections
-      |> Map.put(connection_innovation, %{connection | enabled: false})
-      |> Map.put(innovation1, conn1)
-      |> Map.put(innovation2, conn2)
-
-    %{genome | 
-      nodes: Map.put(genome.nodes, new_node_id, new_node),
-      connections: updated_connections
-    }
+        %{genome | 
+          nodes: Map.put(genome.nodes, new_node_id, new_node),
+          connections: updated_connections
+        }
+    end
   end
 
+  @spec add_connection(t(), integer(), integer()) :: t()
   def add_connection(%__MODULE__{} = genome, from_id, to_id) do
+    # Validate input parameters
+    unless is_integer(from_id) and from_id > 0 do
+      raise ArgumentError, "from_id must be a positive integer, got: #{inspect(from_id)}"
+    end
+    
+    unless is_integer(to_id) and to_id > 0 do
+      raise ArgumentError, "to_id must be a positive integer, got: #{inspect(to_id)}"
+    end
+    
     if valid_connection?(genome, from_id, to_id) do
-      innovation = get_innovation_number()
+      innovation = get_innovation_number(from_id, to_id)
       weight = :rand.normal(0.0, 1.0)
       
       connection = Connection.new(from_id, to_id, weight, innovation, true)
@@ -90,7 +117,16 @@ defmodule NeuroEvolution.TWEANN.Genome do
     end
   end
 
+  @spec mutate_weights(t(), float(), float()) :: t()
   def mutate_weights(%__MODULE__{} = genome, mutation_rate \\ 0.1, perturbation_strength \\ 0.1) do
+    # Validate input parameters
+    unless is_float(mutation_rate) and mutation_rate >= 0.0 and mutation_rate <= 1.0 do
+      raise ArgumentError, "mutation_rate must be a float between 0.0 and 1.0, got: #{inspect(mutation_rate)}"
+    end
+    
+    unless is_float(perturbation_strength) and perturbation_strength > 0.0 do
+      raise ArgumentError, "perturbation_strength must be a positive float, got: #{inspect(perturbation_strength)}"
+    end
     updated_connections = 
       Enum.reduce(genome.connections, %{}, fn {id, conn}, acc ->
         # Apply mutation based on the mutation rate
@@ -115,6 +151,7 @@ defmodule NeuroEvolution.TWEANN.Genome do
     %{genome | connections: updated_connections}
   end
 
+  @spec crossover(t(), t()) :: t()
   def crossover(%__MODULE__{} = parent1, %__MODULE__{} = parent2) do
     # Determine which parent is more fit
     {dominant, recessive} = 
@@ -126,7 +163,7 @@ defmodule NeuroEvolution.TWEANN.Genome do
 
     # Strongly preserve the dominant parent's structure
     # First, copy all nodes from the dominant parent
-    child_nodes = dominant.nodes
+    _child_nodes = dominant.nodes
     
     # For connections, heavily bias towards the dominant parent
     child_connections = 
@@ -170,6 +207,7 @@ defmodule NeuroEvolution.TWEANN.Genome do
     }
   end
 
+  @spec distance(t(), t()) :: float()
   def distance(%__MODULE__{} = genome1, %__MODULE__{} = genome2) do
     # Check if genomes are identical (same ID)
     if genome1.id == genome2.id do
@@ -214,6 +252,7 @@ defmodule NeuroEvolution.TWEANN.Genome do
     end
   end
 
+  @spec to_nx_tensor(t(), non_neg_integer()) :: map()
   def to_nx_tensor(%__MODULE__{} = genome, max_nodes) do
     adjacency_matrix = build_adjacency_matrix(genome, max_nodes)
     weight_matrix = build_weight_matrix(genome, max_nodes)
@@ -232,6 +271,7 @@ defmodule NeuroEvolution.TWEANN.Genome do
   Converts tensor representation back to genome, updating weights and connections.
   Used primarily for applying plasticity updates from GPU computations.
   """
+  @spec from_nx_tensor(t(), map()) :: t()
   def from_nx_tensor(%__MODULE__{} = original_genome, tensor_data) do
     %{
       adjacency: adjacency_matrix,
@@ -252,6 +292,7 @@ defmodule NeuroEvolution.TWEANN.Genome do
   @doc """
   Updates plasticity weights in genome from tensor representation.
   """
+  @spec update_plasticity_from_tensor(t(), Nx.Tensor.t()) :: t()
   def update_plasticity_from_tensor(%__MODULE__{} = genome, plastic_weights_tensor) do
     updated_connections = 
       genome.connections
@@ -457,8 +498,8 @@ defmodule NeuroEvolution.TWEANN.Genome do
     end
   end
 
-  defp get_innovation_number do
-    System.unique_integer([:positive])
+  defp get_innovation_number(from_node, to_node) do
+    InnovationTracker.get_connection_innovation(from_node, to_node)
   end
 
   defp generate_id do
@@ -598,9 +639,13 @@ defmodule NeuroEvolution.TWEANN.Genome do
     else
       total_diff = 
         Enum.reduce(matching_innovations, 0.0, fn innovation, acc ->
-          weight1 = connections1[innovation].weight
-          weight2 = connections2[innovation].weight
-          acc + abs(weight1 - weight2)
+          case {Map.get(connections1, innovation), Map.get(connections2, innovation)} do
+            {conn1, conn2} when not is_nil(conn1) and not is_nil(conn2) ->
+              acc + abs(conn1.weight - conn2.weight)
+            _ ->
+              # Skip if either connection is missing (should not happen with matching innovations)
+              acc
+          end
         end)
       
       total_diff / MapSet.size(matching_innovations)

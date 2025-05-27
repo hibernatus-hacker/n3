@@ -13,7 +13,8 @@ defmodule NeuroEvolution.MixProject do
 
   def application do
     [
-      extra_applications: [:logger]
+      extra_applications: [:logger],
+      mod: {NeuroEvolution.Application, []}
     ]
   end
 
@@ -22,7 +23,8 @@ defmodule NeuroEvolution.MixProject do
       {:nx, "~> 0.7"},
       {:exla, "~> 0.7"},
       {:axon, "~> 0.6"},
-      {:jason, "~> 1.4"}
+      {:jason, "~> 1.4"},
+      {:erlport, "~> 0.10"}
     ]
   end
 end

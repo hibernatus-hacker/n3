@@ -6,7 +6,7 @@ defmodule NeuroEvolution.Plasticity.HebbianRule do
 
   alias NeuroEvolution.TWEANN.Connection
 
-  def update_weight(%Connection{} = connection, pre_activity, post_activity, params \\ %{}, context \\ %{}) do
+  def update_weight(%Connection{} = connection, pre_activity, post_activity, params \\ %{}, _context \\ %{}) do
     learning_rate = Map.get(params, :learning_rate, 0.01)
     threshold = Map.get(params, :threshold, 0.0)
     decay_factor = Map.get(params, :decay_factor, 0.99)
@@ -121,7 +121,7 @@ defmodule NeuroEvolution.Plasticity.HebbianRule do
     {%{connection | weight: new_weight}, updated_context}
   end
 
-  def anti_hebbian(%Connection{} = connection, pre_activity, post_activity, params \\ %{}, context \\ %{}) do
+  def anti_hebbian(%Connection{} = connection, pre_activity, post_activity, params \\ %{}, _context \\ %{}) do
     learning_rate = Map.get(params, :learning_rate, 0.01)
     threshold = Map.get(params, :threshold, 0.0)
     

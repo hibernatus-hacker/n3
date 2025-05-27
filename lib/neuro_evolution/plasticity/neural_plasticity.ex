@@ -87,7 +87,7 @@ defmodule NeuroEvolution.Plasticity.NeuralPlasticity do
     end
   end
 
-  def calculate_synaptic_scaling(pre_activities, post_activities, target_rate \\ 1.0) do
+  def calculate_synaptic_scaling(_pre_activities, post_activities, target_rate \\ 1.0) do
     avg_post_rate = Enum.sum(post_activities) / length(post_activities)
     scaling_factor = target_rate / max(avg_post_rate, 0.001)
     
@@ -198,7 +198,7 @@ defmodule NeuroEvolution.Plasticity.NeuralPlasticity do
   defp apply_metaplasticity(%Connection{} = connection, %__MODULE__{metaplasticity_enabled: true}, context) do
     # BCM-like metaplasticity: threshold depends on recent activity
     recent_activity = Map.get(context, :recent_post_activity, 1.0)
-    current_activity = Map.get(context, :current_post_activity, 1.0)
+    _current_activity = Map.get(context, :current_post_activity, 1.0)
     
     # Use recent_activity directly to create a clear difference between test cases
     # This ensures that different activity histories will produce different weight changes
@@ -232,7 +232,7 @@ defmodule NeuroEvolution.Plasticity.NeuralPlasticity do
     %{connection | weight: decayed_weight, plasticity_state: decayed_plastic_state}
   end
 
-  defp apply_node_plasticity(plasticity, node, input, output, context, params) do
+  defp apply_node_plasticity(_plasticity, node, input, output, context, params) do
     case Map.get(params, :type) do
       :adaptive_threshold -> 
         apply_adaptive_threshold(node, input, output, context, params)
@@ -245,7 +245,7 @@ defmodule NeuroEvolution.Plasticity.NeuralPlasticity do
     end
   end
 
-  defp apply_adaptive_threshold(node, input, output, context, params) do
+  defp apply_adaptive_threshold(node, _input, output, context, params) do
     learning_rate = Map.get(params, :threshold_learning_rate, 0.001)
     current_threshold = Map.get(context, :activation_threshold, 0.0)
     
@@ -256,9 +256,8 @@ defmodule NeuroEvolution.Plasticity.NeuralPlasticity do
     {node, new_context}
   end
 
-  defp apply_intrinsic_plasticity_to_node(node, input, output, context, params) do
+  defp apply_intrinsic_plasticity_to_node(node, _input, output, context, params) do
     target_mean = Map.get(params, :target_mean, 0.0)
-    target_variance = Map.get(params, :target_variance, 1.0)
     learning_rate = Map.get(params, :intrinsic_learning_rate, 0.01)
     
     current_bias = node.bias
@@ -271,7 +270,7 @@ defmodule NeuroEvolution.Plasticity.NeuralPlasticity do
     {updated_node, context}
   end
 
-  defp apply_homeostatic_intrinsic(node, input, output, context, params) do
+  defp apply_homeostatic_intrinsic(node, _input, output, context, params) do
     target_rate = Map.get(params, :target_firing_rate, 1.0)
     time_constant = Map.get(params, :homeostatic_time_constant, 1000.0)
     

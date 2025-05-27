@@ -17,6 +17,7 @@ defmodule NeuroEvolution.Population.Population do
     :avg_fitness,
     :diversity_metrics,
     :stagnation_counter,
+    :innovation_number,
     :config
   ]
 

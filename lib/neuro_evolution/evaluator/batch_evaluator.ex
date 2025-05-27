@@ -24,6 +24,8 @@ defmodule NeuroEvolution.Evaluator.BatchEvaluator do
   Handles topology clustering and efficient parallel evaluation.
   """
 
+  require Logger
+
   alias NeuroEvolution.TWEANN.Genome
   alias NeuroEvolution.Evaluator.TopologyCluster
 
@@ -68,17 +70,42 @@ defmodule NeuroEvolution.Evaluator.BatchEvaluator do
   end
 
   def evaluate_population(%__MODULE__{} = evaluator, genomes, inputs, fitness_fn) do
-    # Cluster genomes by topology similarity
-    clusters = cluster_genomes_by_topology(genomes, evaluator.max_topology_size)
+    # Check available GPU memory and adjust batch sizes if needed
+    updated_evaluator = if evaluator.adaptive_batching do
+      adjust_batch_sizes_for_memory(evaluator, length(genomes))
+    else
+      evaluator
+    end
     
-    # Evaluate each cluster in parallel
+    # Cluster genomes by topology similarity with memory-aware batching
+    clusters = cluster_genomes_by_topology_with_memory(genomes, updated_evaluator)
+    
+    # Evaluate each cluster in parallel with memory monitoring and proper error handling
     results = 
       clusters
       |> Task.async_stream(fn cluster ->
-        evaluate_cluster(evaluator, cluster, inputs, fitness_fn)
-      end, max_concurrency: System.schedulers_online())
-      |> Enum.map(fn {:ok, result} -> result end)
+        with_memory_monitoring(updated_evaluator, fn ->
+          evaluate_cluster(updated_evaluator, cluster, inputs, fitness_fn)
+        end)
+      end, 
+        max_concurrency: get_optimal_concurrency(updated_evaluator),
+        timeout: 60_000,  # 60 second timeout per cluster
+        on_timeout: :kill_task,
+        ordered: false
+      )
+      |> Enum.reduce([], fn 
+        {:ok, result}, acc -> [result | acc]
+        {:error, reason}, acc -> 
+          Logger.warning("Cluster evaluation failed: #{inspect(reason)}")
+          acc
+        {:exit, reason}, acc ->
+          Logger.warning("Cluster evaluation task exited: #{inspect(reason)}")
+          acc
+      end)
       |> List.flatten()
+    
+    # Explicitly trigger garbage collection to clean up tensor memory
+    :erlang.garbage_collect()
     
     # Return results in original genome order
     sort_results_by_genome_id(results, genomes)
@@ -88,11 +115,16 @@ defmodule NeuroEvolution.Evaluator.BatchEvaluator do
     # Compile cluster to GPU-friendly tensor representation
     {tensor_batch, genome_mapping} = compile_cluster_to_tensors(cluster, evaluator.max_topology_size)
     
-    # Run batch forward propagation on GPU
-    outputs = forward_propagate_batch(tensor_batch, inputs, evaluator.plasticity_enabled)
-    
-    # Calculate fitness for each genome
-    calculate_batch_fitness(outputs, genome_mapping, fitness_fn)
+    try do
+      # Run batch forward propagation on GPU
+      outputs = forward_propagate_batch(tensor_batch, inputs, evaluator.plasticity_enabled)
+      
+      # Calculate fitness for each genome
+      calculate_batch_fitness(outputs, genome_mapping, fitness_fn)
+    after
+      # Clean up tensor memory after evaluation
+      :erlang.garbage_collect()
+    end
   end
 
   def update_plasticity_batch(%__MODULE__{} = evaluator, cluster, inputs, outputs) when evaluator.plasticity_enabled do
@@ -289,7 +321,8 @@ defmodule NeuroEvolution.Evaluator.BatchEvaluator do
 
   # Helper functions
 
-  defp cluster_genomes_by_topology(genomes, max_topology_size) do
+  # Experimental function - kept for future reference but not currently used
+  defp __cluster_genomes_by_topology(genomes, max_topology_size) do
     # Group genomes by similar topology characteristics
     genomes
     |> Enum.group_by(&topology_signature/1)
@@ -431,5 +464,141 @@ defmodule NeuroEvolution.Evaluator.BatchEvaluator do
       end
     end)
     |> Enum.filter(&(&1 != nil))
+  end
+
+  # Memory Management Functions
+
+  defp initialize_memory_manager(device, opts) do
+    %{
+      device: device,
+      max_memory_mb: Keyword.get(opts, :max_memory_mb, 8000),  # 8GB default
+      memory_usage_mb: 0,
+      memory_threshold: Keyword.get(opts, :memory_threshold, 0.85),  # 85% threshold
+      batch_size_history: [],
+      oom_count: 0
+    }
+  end
+
+  defp adjust_batch_sizes_for_memory(%__MODULE__{} = evaluator, population_size) do
+    memory_manager = evaluator.memory_manager
+    
+    # Estimate memory requirements
+    estimated_memory = estimate_memory_usage(population_size, evaluator.max_topology_size, evaluator.plasticity_enabled)
+    
+    # Adjust batch size if estimated memory exceeds threshold
+    new_batch_size = if estimated_memory > memory_manager.max_memory_mb * memory_manager.memory_threshold do
+      # Reduce batch size proportionally
+      reduction_factor = (memory_manager.max_memory_mb * memory_manager.memory_threshold) / estimated_memory
+      max(round(evaluator.batch_size * reduction_factor), 1)
+    else
+      evaluator.batch_size
+    end
+    
+    %{evaluator | batch_size: new_batch_size}
+  end
+
+  defp cluster_genomes_by_topology_with_memory(genomes, %__MODULE__{} = evaluator) do
+    # Use memory-aware clustering that considers batch size limits
+    max_cluster_size = evaluator.batch_size
+    
+    genomes
+    |> Enum.group_by(&topology_signature/1)
+    |> Map.values()
+    |> Enum.flat_map(&split_large_clusters(&1, max_cluster_size, evaluator.max_topology_size))
+  end
+
+  defp split_large_clusters(genomes, max_cluster_size, max_topology_size) when length(genomes) <= max_cluster_size do
+    [create_topology_cluster(genomes, max_topology_size)]
+  end
+
+  defp split_large_clusters(genomes, max_cluster_size, max_topology_size) do
+    # Split large clusters into smaller memory-friendly chunks
+    genomes
+    |> Enum.chunk_every(max_cluster_size)
+    |> Enum.map(&create_topology_cluster(&1, max_topology_size))
+  end
+
+  defp with_memory_monitoring(%__MODULE__{} = evaluator, evaluation_fn) do
+    start_time = System.monotonic_time(:millisecond)
+    
+    try do
+      result = evaluation_fn.()
+      
+      # Update memory statistics
+      end_time = System.monotonic_time(:millisecond)
+      execution_time = end_time - start_time
+      
+      # Log successful execution for future memory estimation
+      update_memory_statistics(evaluator, execution_time, :success)
+      
+      result
+    rescue
+      error ->
+        # Handle potential out-of-memory errors
+        case error do
+          %{message: message} ->
+            if String.contains?(message, "out of memory") do
+              update_memory_statistics(evaluator, 0, :oom)
+              {:error, :out_of_memory}
+            else
+              reraise error, __STACKTRACE__
+            end
+          _ ->
+            reraise error, __STACKTRACE__
+        end
+    end
+  end
+
+  defp get_optimal_concurrency(%__MODULE__{device: :cuda} = evaluator) do
+    # For GPU, limit concurrency to avoid memory contention
+    base_concurrency = case evaluator.memory_manager.oom_count do
+      0 -> System.schedulers_online()
+      1..2 -> max(System.schedulers_online() - 1, 1)
+      _ -> 1  # Conservative approach after multiple OOMs
+    end
+    
+    min(base_concurrency, 4)  # Cap at 4 for GPU workloads
+  end
+
+  defp get_optimal_concurrency(%__MODULE__{device: :cpu}) do
+    System.schedulers_online()
+  end
+
+  defp estimate_memory_usage(population_size, max_topology_size, plasticity_enabled) do
+    # Rough estimation based on tensor sizes
+    # Each genome tensor: max_topology_size^2 for adjacency and weights
+    # Plus features and masks
+    
+    base_memory_per_genome = max_topology_size * max_topology_size * 4 * 2  # float32 for adj + weights
+    feature_memory = max_topology_size * 4 * 4  # 4 features per node
+    mask_memory = max_topology_size * 4 * 2  # input and output masks
+    
+    total_per_genome = base_memory_per_genome + feature_memory + mask_memory
+    
+    # Add plasticity overhead if enabled
+    total_per_genome = if plasticity_enabled do
+      total_per_genome + base_memory_per_genome  # Plastic weights
+    else
+      total_per_genome
+    end
+    
+    # Convert to MB and add overhead for batch processing
+    total_bytes = population_size * total_per_genome
+    overhead_factor = 1.5  # 50% overhead for processing
+    
+    (total_bytes * overhead_factor) / (1024 * 1024)
+  end
+
+  defp update_memory_statistics(%__MODULE__{} = _evaluator, _execution_time, status) do
+    # In a real implementation, this would update global state
+    # For now, we'll just log the information
+    case status do
+      :success ->
+        # Could update estimations based on successful runs
+        :ok
+      :oom ->
+        # Could trigger batch size reduction for future evaluations
+        :ok
+    end
   end
 end

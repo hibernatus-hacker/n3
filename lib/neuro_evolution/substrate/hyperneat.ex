@@ -5,7 +5,7 @@ defmodule NeuroEvolution.Substrate.HyperNEAT do
   """
 
   alias NeuroEvolution.TWEANN.{Genome, Node, Connection}
-  alias NeuroEvolution.Substrate.{Substrate, CPPN}
+  alias NeuroEvolution.Substrate.Substrate
 
   defstruct [
     :cppn,
@@ -261,33 +261,23 @@ defmodule NeuroEvolution.Substrate.HyperNEAT do
         do: {source.position, target.position, source.id, target.id}
   end
 
-  defp generate_random_topology_queries(substrate_nodes) do
-    # Generate random connections with some probability
-    connection_probability = 0.1  # 10% connection probability
-    
-    for source <- substrate_nodes,
-        target <- substrate_nodes,
-        source.id != target.id,
-        valid_connection_type?(source.type, target.type),
-        :rand.uniform() < connection_probability,
-        do: {source.position, target.position, source.id, target.id}
-  end
-
-  defp generate_small_world_queries(substrate_nodes) do
+  # Small world queries implementation has been moved - see line 538
+  # Legacy function - kept for reference but replaced with improved implementation
+  defp __generate_small_world_queries_old(substrate_nodes) do
     # Watts-Strogatz small-world network model
     # Start with regular lattice, then rewire with probability
     rewiring_probability = 0.1
     k_neighbors = 4  # Each node connects to k nearest neighbors
     
     # Generate regular lattice connections
-    regular_connections = generate_k_nearest_neighbors(substrate_nodes, k_neighbors)
+    regular_connections = __generate_k_nearest_neighbors(substrate_nodes, k_neighbors)
     
     # Rewire some connections randomly
     rewired_connections = 
       regular_connections
       |> Enum.map(fn connection ->
         if :rand.uniform() < rewiring_probability do
-          rewire_connection(connection, substrate_nodes)
+          __rewire_connection(connection, substrate_nodes)
         else
           connection
         end
@@ -327,7 +317,8 @@ defmodule NeuroEvolution.Substrate.HyperNEAT do
 
   defp grid_neighbors?(_, _), do: false
 
-  defp generate_k_nearest_neighbors(substrate_nodes, k) do
+  # Experimental function - kept for future reference but not currently used
+  defp __generate_k_nearest_neighbors(substrate_nodes, k) do
     # For each node, connect to its k nearest neighbors
     substrate_nodes
     |> Enum.flat_map(fn source ->
@@ -340,7 +331,8 @@ defmodule NeuroEvolution.Substrate.HyperNEAT do
     end)
   end
 
-  defp rewire_connection({source_pos, _target_pos, source_id, _target_id}, substrate_nodes) do
+  # Experimental function - kept for future reference but not currently used
+  defp __rewire_connection({source_pos, _target_pos, source_id, _target_id}, substrate_nodes) do
     # Find the source node
     source_node = Enum.find(substrate_nodes, &(&1.id == source_id))
     
@@ -359,7 +351,7 @@ defmodule NeuroEvolution.Substrate.HyperNEAT do
     end
   end
 
-  defp build_cppn_input(source_pos, target_pos, %Substrate{} = substrate) do
+  defp build_cppn_input(source_pos, target_pos, %Substrate{} = _substrate) do
     case {source_pos, target_pos} do
       {{x1, y1}, {x2, y2}} ->
         [x1, y1, x2, y2, 1.0]  # bias
@@ -372,7 +364,7 @@ defmodule NeuroEvolution.Substrate.HyperNEAT do
     end
   end
 
-  defp evaluate_cppn(cppn_genome, input) do
+  defp evaluate_cppn(_cppn_genome, input) do
     # This would integrate with the Nx-based network evaluator
     # For now, simplified evaluation
     case length(input) do
@@ -519,12 +511,13 @@ defmodule NeuroEvolution.Substrate.HyperNEAT do
     end
   end
 
-  defp adapt_cppn_to_substrate(cppn, new_substrate) do
+  defp adapt_cppn_to_substrate(cppn, _new_substrate) do
     # Adjust CPPN input/output structure for new substrate dimensionality
     # This is a placeholder - would need more sophisticated adaptation
     cppn
   end
 
+  # This is the actual implementation used
   defp generate_random_topology_queries(substrate_nodes) do
     connection_probability = 0.1
 
@@ -536,6 +529,7 @@ defmodule NeuroEvolution.Substrate.HyperNEAT do
         do: {source.position, target.position, source.id, target.id}
   end
 
+  # This is the actual implementation used
   defp generate_small_world_queries(substrate_nodes) do
     # Combine local grid connections with some random long-range connections
     grid_queries = generate_grid_topology_queries(substrate_nodes)

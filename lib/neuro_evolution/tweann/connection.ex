@@ -209,7 +209,7 @@ defmodule NeuroEvolution.TWEANN.Connection do
     a_plus = Map.get(params, :a_plus, 0.1)
     a_minus = Map.get(params, :a_minus, 0.12)
     tau_plus = Map.get(params, :tau_plus, 20.0)
-    tau_minus = Map.get(params, :tau_minus, 20.0)
+    _tau_minus = Map.get(params, :tau_minus, 20.0)
     
     # Simplified STDP - in practice would need spike timing information
     # This is a rate-based approximation

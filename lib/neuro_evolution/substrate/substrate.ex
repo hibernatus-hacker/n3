@@ -60,7 +60,7 @@ defmodule NeuroEvolution.Substrate.Substrate do
     }
   end
 
-  def grid_2d(width, height, layers \\ [:input, :hidden, :output]) do
+  def grid_2d(width, height, _layers \\ [:input, :hidden, :output]) do
     config = %{
       geometry_type: :grid,
       dimensions: 2,
@@ -73,7 +73,7 @@ defmodule NeuroEvolution.Substrate.Substrate do
     new(config)
   end
 
-  def grid_3d(width, height, depth, layers \\ [:input, :hidden, :output]) do
+  def grid_3d(width, height, depth, _layers \\ [:input, :hidden, :output]) do
     config = %{
       geometry_type: :grid,
       dimensions: 3,
@@ -291,7 +291,7 @@ defmodule NeuroEvolution.Substrate.Substrate do
     layer_radius = get_circular_layer_radius(layer_type, radius)
     
     # Generate hexagonal grid positions
-    hex_positions = []
+    _hex_positions = []
     
     for q <- -layer_radius..layer_radius,
         r <- max(-layer_radius, -q - layer_radius)..min(layer_radius, -q + layer_radius) do
@@ -315,7 +315,7 @@ defmodule NeuroEvolution.Substrate.Substrate do
 
   defp normalize_resolution(resolution) when is_integer(resolution), do: {resolution, resolution}
   defp normalize_resolution({width, height}), do: {width, height}
-  defp normalize_resolution({width, height, depth}), do: {width, height}
+  defp normalize_resolution({width, height, _depth}), do: {width, height}
 
   defp normalize_resolution_3d(resolution) when is_integer(resolution), do: {resolution, resolution, resolution}
   defp normalize_resolution_3d({width, height}), do: {width, height, width}
@@ -436,7 +436,7 @@ defmodule NeuroEvolution.Substrate.Substrate do
     :math.sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1) + (z2 - z1) * (z2 - z1))
   end
 
-  defp apply_periodic_boundary(position, %__MODULE__{} = substrate) do
+  defp apply_periodic_boundary(position, %__MODULE__{} = _substrate) do
     # Wrap coordinates to stay within [0, 1] bounds
     case position do
       {x} -> {:math.fmod(x + 1.0, 1.0)}
@@ -445,7 +445,7 @@ defmodule NeuroEvolution.Substrate.Substrate do
     end
   end
 
-  defp apply_reflective_boundary(position, %__MODULE__{} = substrate) do
+  defp apply_reflective_boundary(position, %__MODULE__{} = _substrate) do
     # Reflect coordinates at boundaries
     reflect = fn coord ->
       cond do
@@ -462,22 +462,22 @@ defmodule NeuroEvolution.Substrate.Substrate do
     end
   end
 
-  defp get_grid_connections(%__MODULE__{} = substrate) do
+  defp get_grid_connections(%__MODULE__{} = _substrate) do
     # Grid topology connections (neighbors)
     []  # Implementation would generate neighbor connections
   end
 
-  defp get_random_connections(%__MODULE__{} = substrate) do
+  defp get_random_connections(%__MODULE__{} = _substrate) do
     # Random topology connections
     []  # Implementation would generate random connections
   end
 
-  defp get_small_world_connections(%__MODULE__{} = substrate) do
+  defp get_small_world_connections(%__MODULE__{} = _substrate) do
     # Small world topology (local + some random long-range)
     []  # Implementation would generate small-world network
   end
 
-  defp get_scale_free_connections(%__MODULE__{} = substrate) do
+  defp get_scale_free_connections(%__MODULE__{} = _substrate) do
     # Scale-free topology (preferential attachment)
     []  # Implementation would generate scale-free network
   end

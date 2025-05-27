@@ -180,7 +180,7 @@ defmodule NeuroEvolution.TWEANN.Node do
 
   defp activate_stdp(input, params, state) do
     spike_threshold = Map.get(params, :spike_threshold, 0.5)
-    last_spike_time = Map.get(state || %{}, :last_spike_time, -1000.0)
+    _last_spike_time = Map.get(state || %{}, :last_spike_time, -1000.0)
     current_time = Map.get(state || %{}, :current_time, 0.0)
     
     output = :math.tanh(input)
@@ -198,8 +198,8 @@ defmodule NeuroEvolution.TWEANN.Node do
   end
 
   defp activate_oja(input, params, state) do
-    learning_rate = Map.get(params, :learning_rate, 0.01)
-    weights = Map.get(state || %{}, :weights, [])
+    _learning_rate = Map.get(params, :learning_rate, 0.01)
+    _weights = Map.get(state || %{}, :weights, [])
     
     output = :math.tanh(input)
     
@@ -249,7 +249,7 @@ defmodule NeuroEvolution.TWEANN.Node do
     {node, new_state}
   end
 
-  defp activate_intrinsic_plasticity(input, params, state) do
+  defp activate_intrinsic_plasticity(input, _params, state) do
     # Get current gain and bias from state or use defaults
     gain = Map.get(state || %{}, :gain, 1.0)
     bias = Map.get(state || %{}, :bias, 0.0)
@@ -321,7 +321,7 @@ defmodule NeuroEvolution.TWEANN.Node do
     {node, new_state}
   end
   
-  defp update_adaptive_threshold_state(node, input, output, state) do
+  defp update_adaptive_threshold_state(node, _input, output, state) do
     # Update state based on adaptive threshold
     params = node.plasticity_params
     adaptation_rate = Map.get(params, :adaptation_rate, 0.01)

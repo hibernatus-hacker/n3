@@ -343,8 +343,8 @@ defmodule NeuroEvolution.Plasticity.STDPRule do
   end
 
   defp calculate_triplet_update(pre_spikes, post_spikes, traces, triplet_params) do
-    {pre_trace_1, pre_trace_2, post_trace_1, post_trace_2} = traces
-    {a2_plus, a2_minus, a3_plus, a3_minus, tau_x, tau_y} = triplet_params
+    {_pre_trace_1, _pre_trace_2, _post_trace_1, _post_trace_2} = traces
+    {a2_plus, a2_minus, a3_plus, a3_minus, _tau_x, _tau_y} = triplet_params
     
     # Simplified triplet STDP calculation
     # In practice, this would involve more complex trace dynamics
