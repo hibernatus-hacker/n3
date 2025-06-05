@@ -405,11 +405,88 @@ defmodule NeuroEvolution.TWEANN.Genome do
   defp normalize_substrate_resolution_3d({w, h, d}), do: {w, h, d}
   defp normalize_substrate_resolution_3d(_), do: {10, 10, 10}
 
-  defp get_substrate_position(index, type, _config) do
+  defp get_substrate_position(index, type, config) do
+    dimensions = Map.get(config, :dimensions, 2)
+    resolution = Map.get(config, :resolution, 10)
+    
     case type do
-      :input -> [] |> Enum.at(index - 1, {0.0, 0.0})
-      :output -> [] |> Enum.at(index - 1, {1.0, 1.0})
+      :input -> 
+        generate_input_position(index, dimensions, resolution)
+      :output -> 
+        generate_output_position(index, dimensions, resolution)
+      :hidden ->
+        generate_hidden_position(index, dimensions, resolution)
     end
+  end
+  
+  defp generate_input_position(index, 2, resolution) do
+    {width, _height} = normalize_substrate_resolution(resolution)
+    x = (index - 1) / max(1, width - 1)
+    {x, 0.0}  # Input layer at bottom
+  end
+  
+  defp generate_input_position(index, 3, resolution) do
+    {width, height, depth} = normalize_substrate_resolution_3d(resolution)
+    positions_per_slice = width * height
+    slice = div(index - 1, positions_per_slice)
+    pos_in_slice = rem(index - 1, positions_per_slice)
+    
+    x = rem(pos_in_slice, width) / max(1, width - 1)
+    y = div(pos_in_slice, width) / max(1, height - 1)
+    z = slice / max(1, depth - 1)  # Input layer at front (z=0)
+    {x, y, z}
+  end
+  
+  defp generate_input_position(index, _, _resolution) do
+    # 1D case
+    {(index - 1) / max(1, index)}
+  end
+  
+  defp generate_output_position(index, 2, resolution) do
+    {width, _height} = normalize_substrate_resolution(resolution)
+    x = (index - 1) / max(1, width - 1)
+    {x, 1.0}  # Output layer at top
+  end
+  
+  defp generate_output_position(index, 3, resolution) do
+    {width, height, depth} = normalize_substrate_resolution_3d(resolution)
+    positions_per_slice = width * height
+    slice = div(index - 1, positions_per_slice)
+    pos_in_slice = rem(index - 1, positions_per_slice)
+    
+    x = rem(pos_in_slice, width) / max(1, width - 1)
+    y = div(pos_in_slice, width) / max(1, height - 1)
+    z = (depth - 1 + slice) / max(1, depth)  # Output layer at back
+    {x, y, z}
+  end
+  
+  defp generate_output_position(_index, _, _resolution) do
+    # 1D case
+    {1.0}
+  end
+  
+  defp generate_hidden_position(index, 2, resolution) do
+    {width, height} = normalize_substrate_resolution(resolution)
+    x = rem(index - 1, width) / max(1, width - 1)
+    y = 0.5 + (div(index - 1, width) / max(1, height - 1) - 0.5) * 0.5  # Middle layers
+    {x, y}
+  end
+  
+  defp generate_hidden_position(index, 3, resolution) do
+    {width, height, depth} = normalize_substrate_resolution_3d(resolution)
+    positions_per_slice = width * height
+    slice = div(index - 1, positions_per_slice)
+    pos_in_slice = rem(index - 1, positions_per_slice)
+    
+    x = rem(pos_in_slice, width) / max(1, width - 1)
+    y = div(pos_in_slice, width) / max(1, height - 1)
+    z = 0.3 + (slice / max(1, depth - 1)) * 0.4  # Hidden layers in middle
+    {x, y, z}
+  end
+  
+  defp generate_hidden_position(_index, _, _resolution) do
+    # 1D case
+    {0.5}
   end
 
   defp get_activation_function(%{plasticity_config: nil}), do: :tanh
@@ -506,8 +583,6 @@ defmodule NeuroEvolution.TWEANN.Genome do
     :crypto.strong_rand_bytes(16) |> Base.encode16()
   end
 
-  defp return_if_nil(nil, default), do: default
-  defp return_if_nil(value, _default), do: value
 
   defp extract_connections_from_tensors(original_connections, adjacency_matrix, weight_matrix) do
     # Convert tensors to Elixir data

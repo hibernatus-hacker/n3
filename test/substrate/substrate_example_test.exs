@@ -1,7 +1,7 @@
 defmodule SubstrateExampleTest do
   use ExUnit.Case
   
-  alias NeuroEvolution.Substrate
+  alias NeuroEvolution.Substrate.Substrate
   
   describe "substrate creation and manipulation" do
     test "creates 2D grid substrate with correct dimensions" do
@@ -54,12 +54,24 @@ defmodule SubstrateExampleTest do
       original = Substrate.grid_2d(3, 3)
       rotated = Substrate.rotate_positions(original, :math.pi / 2)  # 90 degrees
       
-      # Get a sample position from original and rotated
-      original_pos = List.first(original.input_positions)
-      rotated_pos = List.first(rotated.input_positions)
+      # Get a position that will change when rotated (not the origin)
+      # Use the second position which should be {0.5, 0.0}
+      original_pos = Enum.at(original.input_positions, 1)
+      rotated_pos = Enum.at(rotated.input_positions, 1)
       
-      # Positions should be different after rotation
+      # Positions should be different after rotation (expect {0.5, 0.0} -> {0.0, 0.5})
       assert original_pos != rotated_pos
+      
+      # Check that rotation actually occurred for a non-origin point
+      {orig_x, orig_y} = original_pos
+      {rot_x, rot_y} = rotated_pos
+      
+      # After 90-degree rotation: (x, y) -> (-y, x)
+      expected_x = -orig_y
+      expected_y = orig_x
+      
+      assert abs(rot_x - expected_x) < 0.0001
+      assert abs(rot_y - expected_y) < 0.0001
     end
     
     test "adds symmetry to substrate" do
@@ -134,13 +146,17 @@ defmodule SubstrateExampleTest do
       )
       
       mutated = NeuroEvolution.Substrate.HyperNEAT.mutate_cppn(original, %{
-        weight_mutation_rate: 0.8,
-        add_node_rate: 0.5,  # High rate to ensure mutation occurs
-        add_connection_rate: 0.5
+        weight_mutation_rate: 1.0,  # Guarantee weight mutations
+        add_node_rate: 0.0,  # Disable to test just weight mutations
+        add_connection_rate: 0.0
       })
       
-      # Structures should be different after mutation
-      assert mutated.cppn != original.cppn
+      # Weights should be different after mutation (since we mutated all weights)
+      original_weights = original.cppn.connections |> Map.values() |> Enum.map(&(&1.weight))
+      mutated_weights = mutated.cppn.connections |> Map.values() |> Enum.map(&(&1.weight))
+      
+      # At least some weights should be different
+      assert original_weights != mutated_weights
     end
     
     test "evolves pattern classifier" do

@@ -74,6 +74,7 @@ defmodule NeuroEvolution.Substrate.HyperNEAT do
     cppn_outputs = if Keyword.get(opts, :leo_enabled, false), do: 2, else: 1
 
     cppn = Genome.new(cppn_inputs, cppn_outputs, substrate: substrate_config)
+           |> add_initial_cppn_connections()
 
     %__MODULE__{
       cppn: cppn,
@@ -172,6 +173,25 @@ defmodule NeuroEvolution.Substrate.HyperNEAT do
 
   # Private functions
 
+  defp add_initial_cppn_connections(cppn) do
+    # Add initial connections from all inputs to all outputs for CPPN
+    input_ids = cppn.inputs
+    output_ids = cppn.outputs
+    
+    # Create connections from each input to each output
+    connections = 
+      for input_id <- input_ids,
+          output_id <- output_ids do
+        innovation = NeuroEvolution.TWEANN.InnovationTracker.get_connection_innovation(input_id, output_id)
+        weight = :rand.normal(0.0, 1.0)
+        connection = NeuroEvolution.TWEANN.Connection.new(input_id, output_id, weight, innovation, true)
+        {innovation, connection}
+      end
+      |> Map.new()
+    
+    %{cppn | connections: Map.merge(cppn.connections, connections)}
+  end
+
   defp calculate_cppn_inputs(dimensions, opts) do
     base_inputs = case length(dimensions) do
       2 -> 5  # [x1, y1, x2, y2, bias]
@@ -261,30 +281,6 @@ defmodule NeuroEvolution.Substrate.HyperNEAT do
         do: {source.position, target.position, source.id, target.id}
   end
 
-  # Small world queries implementation has been moved - see line 538
-  # Legacy function - kept for reference but replaced with improved implementation
-  defp __generate_small_world_queries_old(substrate_nodes) do
-    # Watts-Strogatz small-world network model
-    # Start with regular lattice, then rewire with probability
-    rewiring_probability = 0.1
-    k_neighbors = 4  # Each node connects to k nearest neighbors
-    
-    # Generate regular lattice connections
-    regular_connections = __generate_k_nearest_neighbors(substrate_nodes, k_neighbors)
-    
-    # Rewire some connections randomly
-    rewired_connections = 
-      regular_connections
-      |> Enum.map(fn connection ->
-        if :rand.uniform() < rewiring_probability do
-          __rewire_connection(connection, substrate_nodes)
-        else
-          connection
-        end
-      end)
-    
-    rewired_connections
-  end
 
   defp layer_connections(source_layer, target_layer) do
     for source <- source_layer,
@@ -316,40 +312,6 @@ defmodule NeuroEvolution.Substrate.HyperNEAT do
   end
 
   defp grid_neighbors?(_, _), do: false
-
-  # Experimental function - kept for future reference but not currently used
-  defp __generate_k_nearest_neighbors(substrate_nodes, k) do
-    # For each node, connect to its k nearest neighbors
-    substrate_nodes
-    |> Enum.flat_map(fn source ->
-      substrate_nodes
-      |> Enum.filter(&(&1.id != source.id))
-      |> Enum.filter(&valid_connection_type?(source.type, &1.type))
-      |> Enum.sort_by(&Node.euclidean_distance(source, &1))
-      |> Enum.take(k)
-      |> Enum.map(&{source.position, &1.position, source.id, &1.id})
-    end)
-  end
-
-  # Experimental function - kept for future reference but not currently used
-  defp __rewire_connection({source_pos, _target_pos, source_id, _target_id}, substrate_nodes) do
-    # Find the source node
-    source_node = Enum.find(substrate_nodes, &(&1.id == source_id))
-    
-    # Pick a random target (excluding self and invalid connection types)
-    valid_targets = 
-      substrate_nodes
-      |> Enum.filter(&(&1.id != source_id))
-      |> Enum.filter(&valid_connection_type?(source_node.type, &1.type))
-    
-    if length(valid_targets) > 0 do
-      target_node = Enum.random(valid_targets)
-      {source_pos, target_node.position, source_id, target_node.id}
-    else
-      # If no valid targets, keep original connection
-      {source_pos, source_pos, source_id, source_id}  # This will be filtered out later
-    end
-  end
 
   defp build_cppn_input(source_pos, target_pos, %Substrate{} = _substrate) do
     case {source_pos, target_pos} do

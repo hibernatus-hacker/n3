@@ -1,4 +1,7 @@
 defmodule NeuroEvolution do
+  # Re-export important modules for convenience
+  defdelegate grid_2d(width, height), to: NeuroEvolution.Substrate.Substrate
+  defdelegate grid_3d(width, height, depth), to: NeuroEvolution.Substrate.Substrate
   @moduledoc """
   A comprehensive TWEANN (Topology and Weight Evolving Artificial Neural Network) 
   neuroevolution library for Elixir with GPU acceleration via Nx.
@@ -264,18 +267,22 @@ defmodule NeuroEvolution do
       _ -> []
     end
     
-    # Filter out any non-genome structures
+    # Filter genomes and handle case where they might not have fitness
     valid_genomes = Enum.filter(genomes, fn g ->
-      is_map(g) and Map.has_key?(g, :fitness) and is_struct(g, NeuroEvolution.TWEANN.Genome)
+      is_struct(g, NeuroEvolution.TWEANN.Genome)
     end)
     
-    # Return the genome with the highest fitness, or nil if none found
+    # Return the genome with the highest fitness, or first genome if none have fitness
     case valid_genomes do
       [] -> nil
       _ -> 
-        Enum.max_by(valid_genomes, fn g -> 
-          g.fitness || 0.0
-        end)
+        # Find genome with highest fitness, defaulting to first if no fitness set
+        genomes_with_fitness = Enum.filter(valid_genomes, &(&1.fitness != nil))
+        if length(genomes_with_fitness) > 0 do
+          Enum.max_by(genomes_with_fitness, &(&1.fitness))
+        else
+          List.first(valid_genomes)
+        end
     end
   end
   

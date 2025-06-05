@@ -7,12 +7,15 @@ defmodule NeuroEvolution.Plasticity.OjaRule do
   @behaviour NeuroEvolution.Plasticity.PlasticityRule
 
   @impl true
-  def update_weight(weight, pre_activity, post_activity, learning_rate, _params \\ %{}) do
+  def update_weight(%NeuroEvolution.TWEANN.Connection{} = connection, pre_activity, post_activity, params \\ %{}, _context \\ %{}) do
+    learning_rate = Map.get(params, :learning_rate, 0.01)
+    
     # Oja's rule: Δw = η * post * (pre - post * weight)
     # This normalizes weights and prevents unlimited growth
-    weight_change = learning_rate * post_activity * (pre_activity - post_activity * weight)
+    weight_change = learning_rate * post_activity * (pre_activity - post_activity * connection.weight)
     
-    weight + weight_change
+    new_weight = connection.weight + weight_change
+    %{connection | weight: new_weight}
   end
 
   @impl true

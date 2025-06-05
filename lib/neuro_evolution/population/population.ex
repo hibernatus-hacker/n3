@@ -69,10 +69,11 @@ defmodule NeuroEvolution.Population.Population do
   def evaluate_fitness(%__MODULE__{} = population, fitness_fn) do
     evaluated_genomes = 
       population.genomes
-      |> Enum.map(fn genome ->
+      |> Enum.map(fn {id, genome} ->
         fitness = fitness_fn.(genome)
-        %{genome | fitness: fitness}
+        {id, %{genome | fitness: fitness}}
       end)
+      |> Map.new()
     
     %{population | genomes: evaluated_genomes}
   end

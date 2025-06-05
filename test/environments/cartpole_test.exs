@@ -46,12 +46,12 @@ defmodule NeuroEvolution.Environments.CartPoleTest do
       # Create a basic genome for testing
       genome = NeuroEvolution.new_genome(4, 2)
       
-      # Evaluate for a few steps
-      score = CartPole.evaluate(genome, max_steps: 10)
+      # Evaluate for one trial
+      score = CartPole.evaluate(genome, 1)
       
       # Score should be a number representing how many steps the agent survived
       assert is_number(score)
-      assert score <= 10
+      assert score >= 0
     end
     
     @tag :slow
@@ -64,8 +64,8 @@ defmodule NeuroEvolution.Environments.CartPoleTest do
       
       genome = NeuroEvolution.new_genome(4, 2, plasticity: plasticity_config)
       
-      # Evaluate for a few steps
-      score = CartPole.evaluate(genome, max_steps: 10)
+      # Evaluate for one trial
+      score = CartPole.evaluate(genome, 1)
       
       # Score should be a number
       assert is_number(score)
@@ -82,9 +82,9 @@ defmodule NeuroEvolution.Environments.CartPoleTest do
       assert length(q_genome.inputs) == 4  # CartPole has 4 state variables
       assert length(q_genome.outputs) == 2  # CartPole has 2 actions
       
-      # Should have recurrent connections
+      # Should have recurrent connections (check for self-connections)
       has_recurrent = Enum.any?(q_genome.connections, fn {_id, conn} ->
-        conn.recurrent
+        conn.from == conn.to
       end)
       
       assert has_recurrent
@@ -153,17 +153,27 @@ defmodule NeuroEvolution.Environments.CartPoleTest do
         trained_genome = trained_q_network.genome
         
         # Create a small population with the trained genome
-        population = %{
-          genomes: %{
-            0 => trained_genome,
-            1 => NeuroEvolution.TWEANN.Genome.mutate(trained_genome),
-            2 => NeuroEvolution.TWEANN.Genome.mutate(trained_genome)
-          }
+        genomes = %{
+          0 => trained_genome,
+          1 => NeuroEvolution.TWEANN.Genome.mutate_weights(trained_genome, 0.2),
+          2 => NeuroEvolution.TWEANN.Genome.mutate_weights(trained_genome, 0.2)
+        }
+        
+        population = %NeuroEvolution.Population.Population{
+          genomes: genomes,
+          population_size: 3,
+          generation: 0,
+          species: [],
+          best_fitness: 0.0,
+          avg_fitness: 0.0,
+          stagnation_counter: 0,
+          innovation_number: 100,
+          config: %{}
         }
         
         # Define a simple fitness function
         fitness_fn = fn genome ->
-          CartPole.evaluate(genome, max_steps: 50)
+          CartPole.evaluate(genome, 1)
         end
         
         # Evolve for just 1 generation

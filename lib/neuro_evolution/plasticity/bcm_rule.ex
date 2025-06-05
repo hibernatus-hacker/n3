@@ -7,14 +7,16 @@ defmodule NeuroEvolution.Plasticity.BCMRule do
   @behaviour NeuroEvolution.Plasticity.PlasticityRule
 
   @impl true
-  def update_weight(weight, pre_activity, post_activity, learning_rate, params \\ %{}) do
+  def update_weight(%NeuroEvolution.TWEANN.Connection{} = connection, pre_activity, post_activity, params \\ %{}, context \\ %{}) do
+    learning_rate = Map.get(params, :learning_rate, 0.01)
     threshold = Map.get(params, :threshold, 1.0)
     
     # BCM rule: Δw = η * pre * post * (post - θ)
     # where θ is the modification threshold
     weight_change = learning_rate * pre_activity * post_activity * (post_activity - threshold)
     
-    weight + weight_change
+    new_weight = connection.weight + weight_change
+    %{connection | weight: new_weight}
   end
 
   @impl true

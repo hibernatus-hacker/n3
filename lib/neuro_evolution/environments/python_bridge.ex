@@ -25,8 +25,6 @@ defmodule NeuroEvolution.Environments.PythonBridge do
   # Circuit breaker: Maximum consecutive failures before disabling
   @max_consecutive_failures 5
   
-  # Default timeout for Python calls
-  @default_timeout 30_000
   
   @doc """
   Starts the Python bridge as a supervised process.

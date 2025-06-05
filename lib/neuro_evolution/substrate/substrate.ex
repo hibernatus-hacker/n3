@@ -73,6 +73,11 @@ defmodule NeuroEvolution.Substrate.Substrate do
     new(config)
   end
 
+  # Convenience function with 2 parameters
+  def grid_2d(size) when is_integer(size) do
+    grid_2d(size, size)
+  end
+
   def grid_3d(width, height, depth, _layers \\ [:input, :hidden, :output]) do
     config = %{
       geometry_type: :grid,
